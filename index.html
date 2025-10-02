@@ -1,0 +1,262 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RP Hypertrophy – Guided Logger</title>
+  <meta name="theme-color" content="#151935">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <style>
+    body{margin:0;background:#0f1220;color:#f1f5ff;font:16px/1.4 system-ui,Segoe UI,Roboto,Arial,sans-serif}
+    header{position:sticky;top:0;background:#0a0e1eaa;backdrop-filter:blur(6px);border-bottom:1px solid #263158;z-index:10}
+    .wrap{max-width:1100px;margin:0 auto;padding:12px 16px}
+    .grid{display:grid;gap:12px}
+    .pan{background:#151935;border:1px solid #263158;border-radius:12px;padding:12px}
+    .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    select,input,button{background:#0e1330;color:#f1f5ff;border:1px solid #2a3566;border-radius:10px;padding:8px 10px}
+    button{cursor:pointer}
+    .tab{padding:8px 10px;border-radius:10px;border:1px solid #2a3566;background:#0e1330;cursor:pointer}
+    .tab.active{background:#5b8cff;border-color:#3f6fe6}
+    .section-title{font-size:14px;color:#cbd5ff;margin:8px 0}
+    .footer{color:#8ea0d6;font-size:12px;text-align:center;margin:18px}
+    .timer{font-variant-numeric:tabular-nums;font-size:20px}
+    .muted{color:#a9b2d0}
+    .tags{display:flex;gap:6px;flex-wrap:wrap}
+    .tag{font-size:12px;color:#cbd5ff;background:#0e1330;border:1px solid #2a3566;padding:2px 8px;border-radius:999px}
+    .spacer{flex:1}
+    .err{background:#3b1212;color:#fecaca;border:1px solid #7a1f1f;padding:10px;border-radius:10px;margin:10px 0}
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap row">
+    <h1>RP Hypertrophy – Guided Workout Logger</h1>
+    <div class="spacer"></div>
+    <div class="row">
+      <button id="tab-log" class="tab active">Log</button>
+      <button id="tab-dash" class="tab">Dashboard</button>
+      <button id="tab-settings" class="tab">Settings</button>
+    </div>
+  </div>
+</header>
+<div class="wrap grid">
+  <div id="error" style="display:none" class="err"></div>
+  <div class="pan" id="panel-log">
+    <div class="row">
+      <label>Week <select id="weekSel"></select></label>
+      <label>Day <select id="daySel"></select></label>
+      <button class="tab" id="startGuided">Start Guided Mode</button>
+      <div class="spacer"></div>
+      <button id="saveProgress">Save</button>
+      <button id="exportJson">Export JSON</button>
+      <button id="exportCsv">Export CSV</button>
+      <label class="tab">Import <input type="file" id="importJson" accept="application/json" style="display:none"></label>
+      <button id="importBtn">Choose File…</button>
+    </div>
+    <div class="section-title">Exercises</div>
+    <div id="exerciseList"></div>
+    <div class="row" style="position:sticky;bottom:0;background:#0a0e1eaa;backdrop-filter:blur(6px);padding:10px;border-top:1px solid #263158;border-radius:0 0 12px 12px;margin:-12px;">
+      <div class="row"><span>Rest Timer:</span> <input type="number" id="restSec" value="90" style="width:80px"> <span class="timer" id="timer">00:00</span> <button id="startTimer">Start</button> <button id="stopTimer">Stop</button> <button id="resetTimer">Reset</button></div>
+      <div class="spacer"></div>
+      <div class="muted" style="font-size:12px">e1RM uses Epley: W × (1 + R/30)</div>
+    </div>
+  </div>
+  <div class="pan" id="panel-dash" style="display:none">
+    <div class="section-title">Overview</div>
+    <div id="dashOverview" class="grid"></div>
+    <div class="section-title">Top e1RM PRs</div>
+    <div id="dashPRs"></div>
+  </div>
+  <div class="pan" id="panel-settings" style="display:none">
+    <div class="section-title">Data & Backup</div>
+    <div class="row"><button id="resetAll">Clear All Data</button> <span class="muted" style="font-size:12px">(keeps plan)</span></div>
+    <div class="section-title">Guided Mode</div>
+    <div class="row"><label>Default Rest (sec) <input type="number" id="defaultRest" value="90" style="width:100px"></label> <label>Auto-start next timer <input type="checkbox" id="autoNext" checked></label></div>
+  </div>
+  <div class="footer">Local-only: data stays on this device unless you export it.</div>
+</div>
+<script>
+(function(){
+  try{
+    const PLAN = {"weeks": [{"name": "Week 1", "days": [{"name": "Legs A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Back Squat", "muscle_group": "Quads/Glutes", "sets_planned": 3, "reps_target": "6-10", "rir_target": "3-4"}, {"name": "Romanian Deadlift", "muscle_group": "Hamstrings/Glutes", "sets_planned": 3, "reps_target": "6-10", "rir_target": "3-4"}, {"name": "Leg Press", "muscle_group": "Quads/Glutes", "sets_planned": 3, "reps_target": "10-15", "rir_target": "3-4"}, {"name": "Bulgarian Split Squat", "muscle_group": "Quads/Glutes", "sets_planned": 2, "reps_target": "8-12", "rir_target": "3-4"}, {"name": "Leg Curl (Lying)", "muscle_group": "Hamstrings", "sets_planned": 2, "reps_target": "10-15", "rir_target": "3-4"}, {"name": "Standing Calf Raise", "muscle_group": "Calves", "sets_planned": 2, "reps_target": "10-15", "rir_target": "3-4"}, {"name": "Seated Calf Raise", "muscle_group": "Calves", "sets_planned": 2, "reps_target": "10-15", "rir_target": "3-4"}]}, {"name": "Legs B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Hack Squat", "muscle_group": "Quads", "sets_planned": 3, "reps_target": "6-10", "rir_target": "3-4"}, {"name": "Hip Thrust", "muscle_group": "Glutes/Hamstrings", "sets_planned": 3, "reps_target": "6-10", "rir_target": "3-4"}, {"name": "Walking Lunge", "muscle_group": "Quads/Glutes", "sets_planned": 2, "reps_target": "10-12/leg", "rir_target": "3-4"}, {"name": "Leg Extension", "muscle_group": "Quads", "sets_planned": 2, "reps_target": "12-15", "rir_target": "3-4"}, {"name": "Seated Leg Curl", "muscle_group": "Hamstrings", "sets_planned": 2, "reps_target": "10-15", "rir_target": "3-4"}, {"name": "Standing Calf Raise", "muscle_group": "Calves", "sets_planned": 2, "reps_target": "10-15", "rir_target": "3-4"}]}, {"name": "Pull A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Weighted Pull-Up", "muscle_group": "Lats/Back", "sets_planned": 3, "reps_target": "6-10", "rir_target": "3-4"}, {"name": "Barbell Row", "muscle_group": "Mid/Upper Back", "sets_planned": 3, "reps_target": "6-10", "rir_target": "3-4"}, {"name": "Close-Grip Lat Pulldown", "muscle_group": "Lats/Back", "sets_planned": 3, "reps_target": "8-12", "rir_target": "3-4"}, {"name": "Chest-Supported Row", "muscle_group": "Mid/Upper Back", "sets_planned": 2, "reps_target": "10-12", "rir_target": "3-4"}, {"name": "Face Pull", "muscle_group": "Rear Delts", "sets_planned": 2, "reps_target": "12-20", "rir_target": "3-4"}, {"name": "EZ-Bar Curl", "muscle_group": "Biceps", "sets_planned": 2, "reps_target": "8-12", "rir_target": "3-4"}, {"name": "Incline DB Curl", "muscle_group": "Biceps", "sets_planned": 2, "reps_target": "10-15", "rir_target": "3-4"}]}, {"name": "Pull B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "T-Bar Row", "muscle_group": "Mid/Upper Back", "sets_planned": 3, "reps_target": "6-10", "rir_target": "3-4"}, {"name": "Wide-Grip Lat Pulldown", "muscle_group": "Lats/Back", "sets_planned": 3, "reps_target": "8-12", "rir_target": "3-4"}, {"name": "Single-Arm DB Row", "muscle_group": "Lats/Back", "sets_planned": 3, "reps_target": "8-12", "rir_target": "3-4"}, {"name": "Rear Delt Fly (Reverse Pec Deck)", "muscle_group": "Rear Delts", "sets_planned": 2, "reps_target": "12-20", "rir_target": "3-4"}, {"name": "Cable Curl", "muscle_group": "Biceps", "sets_planned": 2, "reps_target": "10-15", "rir_target": "3-4"}, {"name": "Hammer Curl", "muscle_group": "Brachialis/Forearm", "sets_planned": 2, "reps_target": "10-12", "rir_target": "3-4"}]}, {"name": "Push A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Barbell Bench Press", "muscle_group": "Chest", "sets_planned": 3, "reps_target": "6-10", "rir_target": "3-4"}, {"name": "Incline Dumbbell Press", "muscle_group": "Chest", "sets_planned": 3, "reps_target": "8-12", "rir_target": "3-4"}, {"name": "Seated DB Shoulder Press", "muscle_group": "Shoulders", "sets_planned": 3, "reps_target": "6-10", "rir_target": "3-4"}, {"name": "Cable Fly", "muscle_group": "Chest", "sets_planned": 2, "reps_target": "12-15", "rir_target": "3-4"}, {"name": "Lateral Raise", "muscle_group": "Delts", "sets_planned": 2, "reps_target": "12-20", "rir_target": "3-4"}, {"name": "Triceps Rope Pushdown", "muscle_group": "Triceps", "sets_planned": 2, "reps_target": "10-15", "rir_target": "3-4"}, {"name": "Overhead Triceps Extension (Cable)", "muscle_group": "Triceps", "sets_planned": 2, "reps_target": "10-15", "rir_target": "3-4"}]}, {"name": "Push B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Incline Barbell Bench Press", "muscle_group": "Chest", "sets_planned": 3, "reps_target": "6-10", "rir_target": "3-4"}, {"name": "Dumbbell Flat Press", "muscle_group": "Chest", "sets_planned": 3, "reps_target": "8-12", "rir_target": "3-4"}, {"name": "Machine Shoulder Press", "muscle_group": "Shoulders", "sets_planned": 3, "reps_target": "8-12", "rir_target": "3-4"}, {"name": "Pec Deck", "muscle_group": "Chest", "sets_planned": 2, "reps_target": "12-15", "rir_target": "3-4"}, {"name": "Cable Lateral Raise", "muscle_group": "Delts", "sets_planned": 2, "reps_target": "12-20", "rir_target": "3-4"}, {"name": "Weighted Dip", "muscle_group": "Chest/Triceps", "sets_planned": 2, "reps_target": "6-10", "rir_target": "3-4"}, {"name": "Skull Crushers", "muscle_group": "Triceps", "sets_planned": 2, "reps_target": "10-12", "rir_target": "3-4"}]}]}, {"name": "Week 2", "days": [{"name": "Legs A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Back Squat", "muscle_group": "Quads/Glutes", "sets_planned": 4, "reps_target": "6-10", "rir_target": "2-3"}, {"name": "Romanian Deadlift", "muscle_group": "Hamstrings/Glutes", "sets_planned": 4, "reps_target": "6-10", "rir_target": "2-3"}, {"name": "Leg Press", "muscle_group": "Quads/Glutes", "sets_planned": 4, "reps_target": "10-15", "rir_target": "2-3"}, {"name": "Bulgarian Split Squat", "muscle_group": "Quads/Glutes", "sets_planned": 3, "reps_target": "8-12", "rir_target": "2-3"}, {"name": "Leg Curl (Lying)", "muscle_group": "Hamstrings", "sets_planned": 3, "reps_target": "10-15", "rir_target": "2-3"}, {"name": "Standing Calf Raise", "muscle_group": "Calves", "sets_planned": 3, "reps_target": "10-15", "rir_target": "2-3"}, {"name": "Seated Calf Raise", "muscle_group": "Calves", "sets_planned": 3, "reps_target": "10-15", "rir_target": "2-3"}]}, {"name": "Legs B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Hack Squat", "muscle_group": "Quads", "sets_planned": 4, "reps_target": "6-10", "rir_target": "2-3"}, {"name": "Hip Thrust", "muscle_group": "Glutes/Hamstrings", "sets_planned": 4, "reps_target": "6-10", "rir_target": "2-3"}, {"name": "Walking Lunge", "muscle_group": "Quads/Glutes", "sets_planned": 3, "reps_target": "10-12/leg", "rir_target": "2-3"}, {"name": "Leg Extension", "muscle_group": "Quads", "sets_planned": 3, "reps_target": "12-15", "rir_target": "2-3"}, {"name": "Seated Leg Curl", "muscle_group": "Hamstrings", "sets_planned": 3, "reps_target": "10-15", "rir_target": "2-3"}, {"name": "Standing Calf Raise", "muscle_group": "Calves", "sets_planned": 3, "reps_target": "10-15", "rir_target": "2-3"}]}, {"name": "Pull A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Weighted Pull-Up", "muscle_group": "Lats/Back", "sets_planned": 4, "reps_target": "6-10", "rir_target": "2-3"}, {"name": "Barbell Row", "muscle_group": "Mid/Upper Back", "sets_planned": 4, "reps_target": "6-10", "rir_target": "2-3"}, {"name": "Close-Grip Lat Pulldown", "muscle_group": "Lats/Back", "sets_planned": 4, "reps_target": "8-12", "rir_target": "2-3"}, {"name": "Chest-Supported Row", "muscle_group": "Mid/Upper Back", "sets_planned": 3, "reps_target": "10-12", "rir_target": "2-3"}, {"name": "Face Pull", "muscle_group": "Rear Delts", "sets_planned": 3, "reps_target": "12-20", "rir_target": "2-3"}, {"name": "EZ-Bar Curl", "muscle_group": "Biceps", "sets_planned": 3, "reps_target": "8-12", "rir_target": "2-3"}, {"name": "Incline DB Curl", "muscle_group": "Biceps", "sets_planned": 3, "reps_target": "10-15", "rir_target": "2-3"}]}, {"name": "Pull B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "T-Bar Row", "muscle_group": "Mid/Upper Back", "sets_planned": 4, "reps_target": "6-10", "rir_target": "2-3"}, {"name": "Wide-Grip Lat Pulldown", "muscle_group": "Lats/Back", "sets_planned": 4, "reps_target": "8-12", "rir_target": "2-3"}, {"name": "Single-Arm DB Row", "muscle_group": "Lats/Back", "sets_planned": 4, "reps_target": "8-12", "rir_target": "2-3"}, {"name": "Rear Delt Fly (Reverse Pec Deck)", "muscle_group": "Rear Delts", "sets_planned": 3, "reps_target": "12-20", "rir_target": "2-3"}, {"name": "Cable Curl", "muscle_group": "Biceps", "sets_planned": 3, "reps_target": "10-15", "rir_target": "2-3"}, {"name": "Hammer Curl", "muscle_group": "Brachialis/Forearm", "sets_planned": 3, "reps_target": "10-12", "rir_target": "2-3"}]}, {"name": "Push A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Barbell Bench Press", "muscle_group": "Chest", "sets_planned": 4, "reps_target": "6-10", "rir_target": "2-3"}, {"name": "Incline Dumbbell Press", "muscle_group": "Chest", "sets_planned": 4, "reps_target": "8-12", "rir_target": "2-3"}, {"name": "Seated DB Shoulder Press", "muscle_group": "Shoulders", "sets_planned": 4, "reps_target": "6-10", "rir_target": "2-3"}, {"name": "Cable Fly", "muscle_group": "Chest", "sets_planned": 3, "reps_target": "12-15", "rir_target": "2-3"}, {"name": "Lateral Raise", "muscle_group": "Delts", "sets_planned": 3, "reps_target": "12-20", "rir_target": "2-3"}, {"name": "Triceps Rope Pushdown", "muscle_group": "Triceps", "sets_planned": 3, "reps_target": "10-15", "rir_target": "2-3"}, {"name": "Overhead Triceps Extension (Cable)", "muscle_group": "Triceps", "sets_planned": 3, "reps_target": "10-15", "rir_target": "2-3"}]}, {"name": "Push B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Incline Barbell Bench Press", "muscle_group": "Chest", "sets_planned": 4, "reps_target": "6-10", "rir_target": "2-3"}, {"name": "Dumbbell Flat Press", "muscle_group": "Chest", "sets_planned": 4, "reps_target": "8-12", "rir_target": "2-3"}, {"name": "Machine Shoulder Press", "muscle_group": "Shoulders", "sets_planned": 4, "reps_target": "8-12", "rir_target": "2-3"}, {"name": "Pec Deck", "muscle_group": "Chest", "sets_planned": 3, "reps_target": "12-15", "rir_target": "2-3"}, {"name": "Cable Lateral Raise", "muscle_group": "Delts", "sets_planned": 3, "reps_target": "12-20", "rir_target": "2-3"}, {"name": "Weighted Dip", "muscle_group": "Chest/Triceps", "sets_planned": 3, "reps_target": "6-10", "rir_target": "2-3"}, {"name": "Skull Crushers", "muscle_group": "Triceps", "sets_planned": 3, "reps_target": "10-12", "rir_target": "2-3"}]}]}, {"name": "Week 3", "days": [{"name": "Legs A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Back Squat", "muscle_group": "Quads/Glutes", "sets_planned": 4, "reps_target": "6-10", "rir_target": "1-2"}, {"name": "Romanian Deadlift", "muscle_group": "Hamstrings/Glutes", "sets_planned": 4, "reps_target": "6-10", "rir_target": "1-2"}, {"name": "Leg Press", "muscle_group": "Quads/Glutes", "sets_planned": 4, "reps_target": "10-15", "rir_target": "1-2"}, {"name": "Bulgarian Split Squat", "muscle_group": "Quads/Glutes", "sets_planned": 3, "reps_target": "8-12", "rir_target": "1-2"}, {"name": "Leg Curl (Lying)", "muscle_group": "Hamstrings", "sets_planned": 3, "reps_target": "10-15", "rir_target": "1-2"}, {"name": "Standing Calf Raise", "muscle_group": "Calves", "sets_planned": 3, "reps_target": "10-15", "rir_target": "1-2"}, {"name": "Seated Calf Raise", "muscle_group": "Calves", "sets_planned": 3, "reps_target": "10-15", "rir_target": "1-2"}]}, {"name": "Legs B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Hack Squat", "muscle_group": "Quads", "sets_planned": 4, "reps_target": "6-10", "rir_target": "1-2"}, {"name": "Hip Thrust", "muscle_group": "Glutes/Hamstrings", "sets_planned": 4, "reps_target": "6-10", "rir_target": "1-2"}, {"name": "Walking Lunge", "muscle_group": "Quads/Glutes", "sets_planned": 3, "reps_target": "10-12/leg", "rir_target": "1-2"}, {"name": "Leg Extension", "muscle_group": "Quads", "sets_planned": 3, "reps_target": "12-15", "rir_target": "1-2"}, {"name": "Seated Leg Curl", "muscle_group": "Hamstrings", "sets_planned": 3, "reps_target": "10-15", "rir_target": "1-2"}, {"name": "Standing Calf Raise", "muscle_group": "Calves", "sets_planned": 3, "reps_target": "10-15", "rir_target": "1-2"}]}, {"name": "Pull A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Weighted Pull-Up", "muscle_group": "Lats/Back", "sets_planned": 4, "reps_target": "6-10", "rir_target": "1-2"}, {"name": "Barbell Row", "muscle_group": "Mid/Upper Back", "sets_planned": 4, "reps_target": "6-10", "rir_target": "1-2"}, {"name": "Close-Grip Lat Pulldown", "muscle_group": "Lats/Back", "sets_planned": 4, "reps_target": "8-12", "rir_target": "1-2"}, {"name": "Chest-Supported Row", "muscle_group": "Mid/Upper Back", "sets_planned": 3, "reps_target": "10-12", "rir_target": "1-2"}, {"name": "Face Pull", "muscle_group": "Rear Delts", "sets_planned": 3, "reps_target": "12-20", "rir_target": "1-2"}, {"name": "EZ-Bar Curl", "muscle_group": "Biceps", "sets_planned": 3, "reps_target": "8-12", "rir_target": "1-2"}, {"name": "Incline DB Curl", "muscle_group": "Biceps", "sets_planned": 3, "reps_target": "10-15", "rir_target": "1-2"}]}, {"name": "Pull B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "T-Bar Row", "muscle_group": "Mid/Upper Back", "sets_planned": 4, "reps_target": "6-10", "rir_target": "1-2"}, {"name": "Wide-Grip Lat Pulldown", "muscle_group": "Lats/Back", "sets_planned": 4, "reps_target": "8-12", "rir_target": "1-2"}, {"name": "Single-Arm DB Row", "muscle_group": "Lats/Back", "sets_planned": 4, "reps_target": "8-12", "rir_target": "1-2"}, {"name": "Rear Delt Fly (Reverse Pec Deck)", "muscle_group": "Rear Delts", "sets_planned": 3, "reps_target": "12-20", "rir_target": "1-2"}, {"name": "Cable Curl", "muscle_group": "Biceps", "sets_planned": 3, "reps_target": "10-15", "rir_target": "1-2"}, {"name": "Hammer Curl", "muscle_group": "Brachialis/Forearm", "sets_planned": 3, "reps_target": "10-12", "rir_target": "1-2"}]}, {"name": "Push A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Barbell Bench Press", "muscle_group": "Chest", "sets_planned": 4, "reps_target": "6-10", "rir_target": "1-2"}, {"name": "Incline Dumbbell Press", "muscle_group": "Chest", "sets_planned": 4, "reps_target": "8-12", "rir_target": "1-2"}, {"name": "Seated DB Shoulder Press", "muscle_group": "Shoulders", "sets_planned": 4, "reps_target": "6-10", "rir_target": "1-2"}, {"name": "Cable Fly", "muscle_group": "Chest", "sets_planned": 3, "reps_target": "12-15", "rir_target": "1-2"}, {"name": "Lateral Raise", "muscle_group": "Delts", "sets_planned": 3, "reps_target": "12-20", "rir_target": "1-2"}, {"name": "Triceps Rope Pushdown", "muscle_group": "Triceps", "sets_planned": 3, "reps_target": "10-15", "rir_target": "1-2"}, {"name": "Overhead Triceps Extension (Cable)", "muscle_group": "Triceps", "sets_planned": 3, "reps_target": "10-15", "rir_target": "1-2"}]}, {"name": "Push B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Incline Barbell Bench Press", "muscle_group": "Chest", "sets_planned": 4, "reps_target": "6-10", "rir_target": "1-2"}, {"name": "Dumbbell Flat Press", "muscle_group": "Chest", "sets_planned": 4, "reps_target": "8-12", "rir_target": "1-2"}, {"name": "Machine Shoulder Press", "muscle_group": "Shoulders", "sets_planned": 4, "reps_target": "8-12", "rir_target": "1-2"}, {"name": "Pec Deck", "muscle_group": "Chest", "sets_planned": 3, "reps_target": "12-15", "rir_target": "1-2"}, {"name": "Cable Lateral Raise", "muscle_group": "Delts", "sets_planned": 3, "reps_target": "12-20", "rir_target": "1-2"}, {"name": "Weighted Dip", "muscle_group": "Chest/Triceps", "sets_planned": 3, "reps_target": "6-10", "rir_target": "1-2"}, {"name": "Skull Crushers", "muscle_group": "Triceps", "sets_planned": 3, "reps_target": "10-12", "rir_target": "1-2"}]}]}, {"name": "Week 4", "days": [{"name": "Legs A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Back Squat", "muscle_group": "Quads/Glutes", "sets_planned": 5, "reps_target": "6-10", "rir_target": "0-1"}, {"name": "Romanian Deadlift", "muscle_group": "Hamstrings/Glutes", "sets_planned": 5, "reps_target": "6-10", "rir_target": "0-1"}, {"name": "Leg Press", "muscle_group": "Quads/Glutes", "sets_planned": 5, "reps_target": "10-15", "rir_target": "0-1"}, {"name": "Bulgarian Split Squat", "muscle_group": "Quads/Glutes", "sets_planned": 4, "reps_target": "8-12", "rir_target": "0-1"}, {"name": "Leg Curl (Lying)", "muscle_group": "Hamstrings", "sets_planned": 4, "reps_target": "10-15", "rir_target": "0-1"}, {"name": "Standing Calf Raise", "muscle_group": "Calves", "sets_planned": 4, "reps_target": "10-15", "rir_target": "0-1"}, {"name": "Seated Calf Raise", "muscle_group": "Calves", "sets_planned": 4, "reps_target": "10-15", "rir_target": "0-1"}]}, {"name": "Legs B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Hack Squat", "muscle_group": "Quads", "sets_planned": 5, "reps_target": "6-10", "rir_target": "0-1"}, {"name": "Hip Thrust", "muscle_group": "Glutes/Hamstrings", "sets_planned": 5, "reps_target": "6-10", "rir_target": "0-1"}, {"name": "Walking Lunge", "muscle_group": "Quads/Glutes", "sets_planned": 4, "reps_target": "10-12/leg", "rir_target": "0-1"}, {"name": "Leg Extension", "muscle_group": "Quads", "sets_planned": 4, "reps_target": "12-15", "rir_target": "0-1"}, {"name": "Seated Leg Curl", "muscle_group": "Hamstrings", "sets_planned": 4, "reps_target": "10-15", "rir_target": "0-1"}, {"name": "Standing Calf Raise", "muscle_group": "Calves", "sets_planned": 4, "reps_target": "10-15", "rir_target": "0-1"}]}, {"name": "Pull A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Weighted Pull-Up", "muscle_group": "Lats/Back", "sets_planned": 5, "reps_target": "6-10", "rir_target": "0-1"}, {"name": "Barbell Row", "muscle_group": "Mid/Upper Back", "sets_planned": 5, "reps_target": "6-10", "rir_target": "0-1"}, {"name": "Close-Grip Lat Pulldown", "muscle_group": "Lats/Back", "sets_planned": 5, "reps_target": "8-12", "rir_target": "0-1"}, {"name": "Chest-Supported Row", "muscle_group": "Mid/Upper Back", "sets_planned": 4, "reps_target": "10-12", "rir_target": "0-1"}, {"name": "Face Pull", "muscle_group": "Rear Delts", "sets_planned": 4, "reps_target": "12-20", "rir_target": "0-1"}, {"name": "EZ-Bar Curl", "muscle_group": "Biceps", "sets_planned": 4, "reps_target": "8-12", "rir_target": "0-1"}, {"name": "Incline DB Curl", "muscle_group": "Biceps", "sets_planned": 4, "reps_target": "10-15", "rir_target": "0-1"}]}, {"name": "Pull B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "T-Bar Row", "muscle_group": "Mid/Upper Back", "sets_planned": 5, "reps_target": "6-10", "rir_target": "0-1"}, {"name": "Wide-Grip Lat Pulldown", "muscle_group": "Lats/Back", "sets_planned": 5, "reps_target": "8-12", "rir_target": "0-1"}, {"name": "Single-Arm DB Row", "muscle_group": "Lats/Back", "sets_planned": 5, "reps_target": "8-12", "rir_target": "0-1"}, {"name": "Rear Delt Fly (Reverse Pec Deck)", "muscle_group": "Rear Delts", "sets_planned": 4, "reps_target": "12-20", "rir_target": "0-1"}, {"name": "Cable Curl", "muscle_group": "Biceps", "sets_planned": 4, "reps_target": "10-15", "rir_target": "0-1"}, {"name": "Hammer Curl", "muscle_group": "Brachialis/Forearm", "sets_planned": 4, "reps_target": "10-12", "rir_target": "0-1"}]}, {"name": "Push A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Barbell Bench Press", "muscle_group": "Chest", "sets_planned": 5, "reps_target": "6-10", "rir_target": "0-1"}, {"name": "Incline Dumbbell Press", "muscle_group": "Chest", "sets_planned": 5, "reps_target": "8-12", "rir_target": "0-1"}, {"name": "Seated DB Shoulder Press", "muscle_group": "Shoulders", "sets_planned": 5, "reps_target": "6-10", "rir_target": "0-1"}, {"name": "Cable Fly", "muscle_group": "Chest", "sets_planned": 4, "reps_target": "12-15", "rir_target": "0-1"}, {"name": "Lateral Raise", "muscle_group": "Delts", "sets_planned": 4, "reps_target": "12-20", "rir_target": "0-1"}, {"name": "Triceps Rope Pushdown", "muscle_group": "Triceps", "sets_planned": 4, "reps_target": "10-15", "rir_target": "0-1"}, {"name": "Overhead Triceps Extension (Cable)", "muscle_group": "Triceps", "sets_planned": 4, "reps_target": "10-15", "rir_target": "0-1"}]}, {"name": "Push B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Incline Barbell Bench Press", "muscle_group": "Chest", "sets_planned": 5, "reps_target": "6-10", "rir_target": "0-1"}, {"name": "Dumbbell Flat Press", "muscle_group": "Chest", "sets_planned": 5, "reps_target": "8-12", "rir_target": "0-1"}, {"name": "Machine Shoulder Press", "muscle_group": "Shoulders", "sets_planned": 5, "reps_target": "8-12", "rir_target": "0-1"}, {"name": "Pec Deck", "muscle_group": "Chest", "sets_planned": 4, "reps_target": "12-15", "rir_target": "0-1"}, {"name": "Cable Lateral Raise", "muscle_group": "Delts", "sets_planned": 4, "reps_target": "12-20", "rir_target": "0-1"}, {"name": "Weighted Dip", "muscle_group": "Chest/Triceps", "sets_planned": 4, "reps_target": "6-10", "rir_target": "0-1"}, {"name": "Skull Crushers", "muscle_group": "Triceps", "sets_planned": 4, "reps_target": "10-12", "rir_target": "0-1"}]}]}, {"name": "Deload", "days": [{"name": "Legs A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Back Squat", "muscle_group": "Quads/Glutes", "sets_planned": 2, "reps_target": "6-10", "rir_target": "4-5"}, {"name": "Romanian Deadlift", "muscle_group": "Hamstrings/Glutes", "sets_planned": 2, "reps_target": "6-10", "rir_target": "4-5"}, {"name": "Leg Press", "muscle_group": "Quads/Glutes", "sets_planned": 2, "reps_target": "10-15", "rir_target": "4-5"}, {"name": "Bulgarian Split Squat", "muscle_group": "Quads/Glutes", "sets_planned": 1, "reps_target": "8-12", "rir_target": "4-5"}, {"name": "Leg Curl (Lying)", "muscle_group": "Hamstrings", "sets_planned": 1, "reps_target": "10-15", "rir_target": "4-5"}, {"name": "Standing Calf Raise", "muscle_group": "Calves", "sets_planned": 1, "reps_target": "10-15", "rir_target": "4-5"}, {"name": "Seated Calf Raise", "muscle_group": "Calves", "sets_planned": 1, "reps_target": "10-15", "rir_target": "4-5"}]}, {"name": "Legs B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Hack Squat", "muscle_group": "Quads", "sets_planned": 2, "reps_target": "6-10", "rir_target": "4-5"}, {"name": "Hip Thrust", "muscle_group": "Glutes/Hamstrings", "sets_planned": 2, "reps_target": "6-10", "rir_target": "4-5"}, {"name": "Walking Lunge", "muscle_group": "Quads/Glutes", "sets_planned": 1, "reps_target": "10-12/leg", "rir_target": "4-5"}, {"name": "Leg Extension", "muscle_group": "Quads", "sets_planned": 1, "reps_target": "12-15", "rir_target": "4-5"}, {"name": "Seated Leg Curl", "muscle_group": "Hamstrings", "sets_planned": 1, "reps_target": "10-15", "rir_target": "4-5"}, {"name": "Standing Calf Raise", "muscle_group": "Calves", "sets_planned": 1, "reps_target": "10-15", "rir_target": "4-5"}]}, {"name": "Pull A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Weighted Pull-Up", "muscle_group": "Lats/Back", "sets_planned": 2, "reps_target": "6-10", "rir_target": "4-5"}, {"name": "Barbell Row", "muscle_group": "Mid/Upper Back", "sets_planned": 2, "reps_target": "6-10", "rir_target": "4-5"}, {"name": "Close-Grip Lat Pulldown", "muscle_group": "Lats/Back", "sets_planned": 2, "reps_target": "8-12", "rir_target": "4-5"}, {"name": "Chest-Supported Row", "muscle_group": "Mid/Upper Back", "sets_planned": 1, "reps_target": "10-12", "rir_target": "4-5"}, {"name": "Face Pull", "muscle_group": "Rear Delts", "sets_planned": 1, "reps_target": "12-20", "rir_target": "4-5"}, {"name": "EZ-Bar Curl", "muscle_group": "Biceps", "sets_planned": 1, "reps_target": "8-12", "rir_target": "4-5"}, {"name": "Incline DB Curl", "muscle_group": "Biceps", "sets_planned": 1, "reps_target": "10-15", "rir_target": "4-5"}]}, {"name": "Pull B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "T-Bar Row", "muscle_group": "Mid/Upper Back", "sets_planned": 2, "reps_target": "6-10", "rir_target": "4-5"}, {"name": "Wide-Grip Lat Pulldown", "muscle_group": "Lats/Back", "sets_planned": 2, "reps_target": "8-12", "rir_target": "4-5"}, {"name": "Single-Arm DB Row", "muscle_group": "Lats/Back", "sets_planned": 2, "reps_target": "8-12", "rir_target": "4-5"}, {"name": "Rear Delt Fly (Reverse Pec Deck)", "muscle_group": "Rear Delts", "sets_planned": 1, "reps_target": "12-20", "rir_target": "4-5"}, {"name": "Cable Curl", "muscle_group": "Biceps", "sets_planned": 1, "reps_target": "10-15", "rir_target": "4-5"}, {"name": "Hammer Curl", "muscle_group": "Brachialis/Forearm", "sets_planned": 1, "reps_target": "10-12", "rir_target": "4-5"}]}, {"name": "Push A", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Barbell Bench Press", "muscle_group": "Chest", "sets_planned": 2, "reps_target": "6-10", "rir_target": "4-5"}, {"name": "Incline Dumbbell Press", "muscle_group": "Chest", "sets_planned": 2, "reps_target": "8-12", "rir_target": "4-5"}, {"name": "Seated DB Shoulder Press", "muscle_group": "Shoulders", "sets_planned": 2, "reps_target": "6-10", "rir_target": "4-5"}, {"name": "Cable Fly", "muscle_group": "Chest", "sets_planned": 1, "reps_target": "12-15", "rir_target": "4-5"}, {"name": "Lateral Raise", "muscle_group": "Delts", "sets_planned": 1, "reps_target": "12-20", "rir_target": "4-5"}, {"name": "Triceps Rope Pushdown", "muscle_group": "Triceps", "sets_planned": 1, "reps_target": "10-15", "rir_target": "4-5"}, {"name": "Overhead Triceps Extension (Cable)", "muscle_group": "Triceps", "sets_planned": 1, "reps_target": "10-15", "rir_target": "4-5"}]}, {"name": "Push B", "exercises": [{"name": "nan", "muscle_group": "nan", "sets_planned": null, "reps_target": "nan", "rir_target": "nan"}, {"name": "Incline Barbell Bench Press", "muscle_group": "Chest", "sets_planned": 2, "reps_target": "6-10", "rir_target": "4-5"}, {"name": "Dumbbell Flat Press", "muscle_group": "Chest", "sets_planned": 2, "reps_target": "8-12", "rir_target": "4-5"}, {"name": "Machine Shoulder Press", "muscle_group": "Shoulders", "sets_planned": 2, "reps_target": "8-12", "rir_target": "4-5"}, {"name": "Pec Deck", "muscle_group": "Chest", "sets_planned": 1, "reps_target": "12-15", "rir_target": "4-5"}, {"name": "Cable Lateral Raise", "muscle_group": "Delts", "sets_planned": 1, "reps_target": "12-20", "rir_target": "4-5"}, {"name": "Weighted Dip", "muscle_group": "Chest/Triceps", "sets_planned": 1, "reps_target": "6-10", "rir_target": "4-5"}, {"name": "Skull Crushers", "muscle_group": "Triceps", "sets_planned": 1, "reps_target": "10-12", "rir_target": "4-5"}]}]}]};
+    const EXLIB = [{"name": "Barbell Bench Press", "muscle_group": "Chest"}, {"name": "Incline Dumbbell Press", "muscle_group": "Chest"}, {"name": "Dumbbell Flat Press", "muscle_group": "Chest"}, {"name": "Incline Barbell Bench Press", "muscle_group": "Chest"}, {"name": "Weighted Dip", "muscle_group": "Chest/Triceps"}, {"name": "Pec Deck", "muscle_group": "Chest"}, {"name": "Cable Fly", "muscle_group": "Chest"}, {"name": "Seated DB Shoulder Press", "muscle_group": "Shoulders"}, {"name": "Machine Shoulder Press", "muscle_group": "Shoulders"}, {"name": "Overhead Press", "muscle_group": "Shoulders"}, {"name": "Lateral Raise", "muscle_group": "Delts"}, {"name": "Cable Lateral Raise", "muscle_group": "Delts"}, {"name": "Rear Delt Fly (Reverse Pec Deck)", "muscle_group": "Rear Delts"}, {"name": "Face Pull", "muscle_group": "Rear Delts"}, {"name": "Triceps Rope Pushdown", "muscle_group": "Triceps"}, {"name": "Overhead Triceps Extension (Cable)", "muscle_group": "Triceps"}, {"name": "Skull Crushers", "muscle_group": "Triceps"}, {"name": "Weighted Pull-Up", "muscle_group": "Lats/Back"}, {"name": "Pull-Up", "muscle_group": "Lats/Back"}, {"name": "Wide-Grip Lat Pulldown", "muscle_group": "Lats/Back"}, {"name": "Close-Grip Lat Pulldown", "muscle_group": "Lats/Back"}, {"name": "Barbell Row", "muscle_group": "Mid/Upper Back"}, {"name": "T-Bar Row", "muscle_group": "Mid/Upper Back"}, {"name": "Chest-Supported Row", "muscle_group": "Mid/Upper Back"}, {"name": "Single-Arm DB Row", "muscle_group": "Lats/Back"}, {"name": "Seated Cable Row", "muscle_group": "Mid/Upper Back"}, {"name": "Rear Delt Fly", "muscle_group": "Rear Delts"}, {"name": "EZ-Bar Curl", "muscle_group": "Biceps"}, {"name": "Incline DB Curl", "muscle_group": "Biceps"}, {"name": "Cable Curl", "muscle_group": "Biceps"}, {"name": "Hammer Curl", "muscle_group": "Brachialis/Forearm"}, {"name": "Back Squat", "muscle_group": "Quads/Glutes"}, {"name": "Front Squat", "muscle_group": "Quads"}, {"name": "Hack Squat", "muscle_group": "Quads"}, {"name": "Romanian Deadlift", "muscle_group": "Hamstrings/Glutes"}, {"name": "Hip Thrust", "muscle_group": "Glutes/Hamstrings"}, {"name": "Leg Press", "muscle_group": "Quads/Glutes"}, {"name": "Bulgarian Split Squat", "muscle_group": "Quads/Glutes"}, {"name": "Walking Lunge", "muscle_group": "Quads/Glutes"}, {"name": "Leg Extension", "muscle_group": "Quads"}, {"name": "Leg Curl (Lying)", "muscle_group": "Hamstrings"}, {"name": "Seated Leg Curl", "muscle_group": "Hamstrings"}, {"name": "Standing Calf Raise", "muscle_group": "Calves"}, {"name": "Seated Calf Raise", "muscle_group": "Calves"}];
+    const $ = (i)=>document.getElementById(i);
+    const fmt = (n)=> Number.isFinite(Number(n)) ? Number(n).toFixed(0) : '-';
+    const e1rm = (w,r)=> (Number(w)||0) * (1 + (Number(r)||0)/30);
+    const today = ()=> new Date().toISOString().slice(0,10);
+
+    const state = {
+      logs: JSON.parse(localStorage.getItem('rp_logs_v1')||'{}'),
+      plan: PLAN,
+      settings: JSON.parse(localStorage.getItem('rp_settings_v1')||'{"defaultRest":90,"autoNext":true}')
+    };
+    const save = ()=>{ localStorage.setItem('rp_logs_v1', JSON.stringify(state.logs)); localStorage.setItem('rp_settings_v1', JSON.stringify(state.settings)); }
+
+    // Tabs
+    $('tab-log').onclick=()=>show('log'); $('tab-dash').onclick=()=>show('dash'); $('tab-settings').onclick=()=>show('settings');
+    function show(n){
+      $('panel-log').style.display = n==='log'? 'block':'none';
+      $('panel-dash').style.display = n==='dash'? 'block':'none';
+      $('panel-settings').style.display = n==='settings'? 'block':'none';
+      $('tab-log').classList.toggle('active', n==='log');
+      $('tab-dash').classList.toggle('active', n==='dash');
+      $('tab-settings').classList.toggle('active', n==='settings');
+      if(n==='dash') renderDashboard();
+    }
+
+    // Week/Day selects
+    const weekSel = $('weekSel');
+    state.plan.weeks.forEach(w=>{ const o=document.createElement('option'); o.value=w.name; o.textContent=w.name; weekSel.appendChild(o); });
+    const daySel = $('daySel');
+    function refreshDays(){
+      daySel.innerHTML='';
+      const wk = state.plan.weeks.find(w=>w.name===weekSel.value);
+      if(!wk) return;
+      wk.days.forEach(d=>{ const o=document.createElement('option'); o.value=d.name; o.textContent=d.name; daySel.appendChild(o); });
+    }
+    weekSel.onchange=()=>{ refreshDays(); renderExercises(); };
+    daySel.onchange=()=>{ renderExercises(); };
+    if(state.plan.weeks.length){ weekSel.value = state.plan.weeks[0].name; refreshDays(); if(state.plan.weeks[0].days.length){ daySel.value = state.plan.weeks[0].days[0].name; } }
+
+    function getLogObj(week, day){
+      state.logs[week] = state.logs[week] || {};
+      state.logs[week][day] = state.logs[week][day] || {date:today(), exercises:{}};
+      return state.logs[week][day];
+    }
+
+    function renderExercises(){
+      const cont = $('exerciseList'); cont.innerHTML='';
+      const wkName = weekSel.value, dyName = daySel.value;
+      const wk = state.plan.weeks.find(w=>w.name===wkName);
+      const dayPlan = wk ? wk.days.find(d=>d.name===dyName) : null;
+      if(!dayPlan){ cont.textContent='No plan found.'; return }
+      const log = getLogObj(wkName, dyName);
+
+      for(let k=0; k<dayPlan.exercises.length; k++){
+        const ex = dayPlan.exercises[k];
+        if(!ex || !ex.name) continue;
+        const key = ex.name;
+        log.exercises[key] = log.exercises[key] || {sets:[], notes:'', e1rm:null, volume:0};
+        const exLog = log.exercises[key];
+        const eid = key.toLowerCase().replace(/[^a-z0-9]+/g,'-') + '-' + k;
+
+        const wrap = document.createElement('div'); wrap.className='pan';
+        const header = document.createElement('div'); header.className='row';
+        header.innerHTML = `<div><strong>${ex.name}</strong> <span class="muted">(${ex.muscle_group||''})</span></div>
+          <div class="spacer"></div>
+          <div class="tags">
+            <span class="tag">Sets: ${ex.sets_planned||'-'}</span>
+            <span class="tag">Reps: ${ex.reps_target||'-'}</span>
+            <span class="tag">RIR: ${ex.rir_target||'-'}</span>
+            <span class="tag">e1RM: <strong id="e1_${eid}">${fmt(exLog.e1rm)}</strong></span>
+            <span class="tag">Vol: <strong id="vol_${eid}">${fmt(exLog.volume)}</strong></span>
+          </div>`;
+        wrap.appendChild(header);
+
+        const table = document.createElement('table');
+        table.innerHTML = '<thead><tr><th>#</th><th>Weight</th><th>Reps</th><th>RIR (opt)</th><th>Est. 1RM</th><th>Set Volume</th><th></th></tr></thead>';
+        const tbody = document.createElement('tbody'); table.appendChild(tbody);
+
+        const renderRows = ()=>{
+          tbody.innerHTML='';
+          exLog.sets.forEach((s, i)=>{
+            const tr = document.createElement('tr');
+            const est = e1rm(s.w, s.r);
+            const vol = (Number(s.w)||0) * (Number(s.r)||0);
+            tr.innerHTML = `<td>${i+1}</td>
+              <td><input type="number" step="0.5" value="${s.w||''}" data-f="w" style="width:100px"></td>
+              <td><input type="number" step="1" value="${s.r||''}" data-f="r" style="width:80px"></td>
+              <td><input type="number" step="0.5" value="${s.rir!=null?s.rir:''}" data-f="rir" style="width:80px"></td>
+              <td>${fmt(est)}</td>
+              <td>${fmt(vol)}</td>
+              <td><button class="ghost" data-act="del">Delete</button></td>`;
+            tr.querySelectorAll('input').forEach(inp=>{
+              inp.oninput = ()=>{ s[inp.dataset.f] = inp.value; updateTotals(); };
+            });
+            tr.querySelector('[data-act=del]').onclick = ()=>{ exLog.sets.splice(i,1); renderRows(); updateTotals(); };
+            tbody.appendChild(tr);
+          });
+        };
+
+        const btnRow = document.createElement('div'); btnRow.className='row';
+        const addBtn = document.createElement('button'); addBtn.textContent='Add Set';
+        addBtn.onclick = ()=>{ exLog.sets.push({w:'', r:'', rir:''}); renderRows(); updateTotals(); };
+        btnRow.appendChild(addBtn);
+
+        const updateTotals = ()=>{
+          let emax = 0; exLog.sets.forEach(s=>{ const v=e1rm(s.w,s.r); if(Number.isFinite(v) && v>emax) emax=v; });
+          const total = exLog.sets.reduce((a,s)=> a + (Number(s.w)||0)*(Number(s.r)||0), 0);
+          exLog.e1rm = emax? Math.round(emax): null;
+          exLog.volume = Math.round(total);
+          const e1El = document.getElementById('e1_'+eid); if(e1El) e1El.textContent = fmt(exLog.e1rm);
+          const volEl = document.getElementById('vol_'+eid); if(volEl) volEl.textContent = fmt(exLog.volume);
+          save();
+        };
+
+        renderRows();
+        wrap.appendChild(table);
+        wrap.appendChild(btnRow);
+        cont.appendChild(wrap);
+      }
+    }
+
+    renderExercises();
+
+    $('saveProgress').onclick=()=>{ save(); alert('Saved to this browser. Export regularly for backup.') };
+    $('exportJson').onclick=()=>{ const blob=new Blob([JSON.stringify(state.logs,null,2)], {type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='rp_logs.json'; a.click(); };
+    $('exportCsv').onclick=()=>{ const rows=[["Date","Week","Day","Exercise","Set #","Weight","Reps","RIR","Set Volume","Exercise Volume","Exercise e1RM"]]; for(const [week,days] of Object.entries(state.logs)){ for(const [day,dlog] of Object.entries(days)){ for(const [ex,elog] of Object.entries(dlog.exercises||{})){ const exVol=elog.volume||0; const exE1=elog.e1rm||''; (elog.sets||[]).forEach((s,i)=>{ const vol=(Number(s.w)||0)*(Number(s.r)||0); rows.push([dlog.date||'',week,day,ex,i+1,s.w||'',s.r||'',s.rir||'',vol,exVol,exE1]); }); } } } const csv = rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='rp_logs.csv'; a.click(); };
+    $('importBtn').onclick=()=>{ $('importJson').click(); };
+    $('importJson').onchange=(e)=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ state.logs=JSON.parse(r.result); save(); alert('Imported.'); renderExercises(); } catch(err){ alert('Invalid JSON.') } }; r.readAsText(f); };
+
+    let timer=null, remaining=0; const tRender=()=>{ const m=String(Math.floor(remaining/60)).padStart(2,'0'); const s=String(Math.floor(remaining%60)).padStart(2,'0'); $('timer').textContent=m+':'+s; };
+    $('startTimer').onclick=()=>{ if(timer) return; remaining=Number($('restSec').value)||90; tRender(); timer=setInterval(()=>{ remaining-=1; if(remaining<=0){ clearInterval(timer); timer=null; remaining=0; tRender(); } else tRender(); }, 1000); };
+    $('stopTimer').onclick=()=>{ if(timer){ clearInterval(timer); timer=null; } };
+    $('resetTimer').onclick=()=>{ remaining=Number($('restSec').value)||90; tRender(); };
+
+    $('defaultRest').oninput=()=>{ state.settings.defaultRest=Number($('defaultRest').value)||90; $('restSec').value=state.settings.defaultRest; save(); };
+    $('autoNext').onchange=()=>{ state.settings.autoNext = $('autoNext').checked; save(); };
+    $('restSec').value = state.settings.defaultRest||90;
+    $('resetAll').onclick=()=>{ if(confirm('Clear all saved logs on this device?')){ state.logs={}; save(); renderExercises(); alert('Cleared.'); } };
+
+    function renderDashboard(){
+      const ov=$('dashOverview'); ov.innerHTML='';
+      const card=document.createElement('div'); card.className='pan';
+      const tbl=document.createElement('table'); tbl.innerHTML='<thead><tr><th>Week</th><th>Total Volume</th><th>Exercises Logged</th></tr></thead>';
+      const tb=document.createElement('tbody');
+      for(const w of state.plan.weeks){
+        const days = state.logs[w.name]||{}; let vol=0, exCnt=0;
+        for(const d of Object.values(days)){
+          for(const e of Object.values(d.exercises||{})){
+            vol += Number(e.volume)||0; if((e.sets||[]).length) exCnt++;
+          }
+        }
+        const tr=document.createElement('tr'); tr.innerHTML = `<td>${w.name}</td><td>${fmt(vol)}</td><td>${exCnt}</td>`; tb.appendChild(tr);
+      }
+      tbl.appendChild(tb); card.appendChild(tbl); ov.appendChild(card);
+
+      const prDiv = $('dashPRs'); prDiv.innerHTML='';
+      const prMap = {};
+      for(const [wname, days] of Object.entries(state.logs)){
+        for(const [dname, dlog] of Object.entries(days)){
+          for(const [ex, el] of Object.entries(dlog.exercises||{})){
+            const val = Number(el.e1rm)||0;
+            if(val>0 && (!prMap[ex] || val>prMap[ex].e1rm)) prMap[ex] = {e1rm:val, week:wname, day:dname, date:dlog.date||''};
+          }
+        }
+      }
+      const prTable = document.createElement('table'); prTable.innerHTML = '<thead><tr><th>Exercise</th><th>Best e1RM</th><th>Week/Day</th><th>Date</th></tr></thead>';
+      const prTbody = document.createElement('tbody');
+      Object.entries(prMap).sort((a,b)=>b[1].e1rm-a[1].e1rm).forEach(([ex,info])=>{
+        const tr=document.createElement('tr'); tr.innerHTML = `<td>${ex}</td><td>${fmt(info.e1rm)}</td><td>${info.week} / ${info.day}</td><td>${info.date}</td>`; prTbody.appendChild(tr);
+      });
+      prTable.appendChild(prTbody); prDiv.appendChild(prTable);
+    }
+
+    if('serviceWorker' in navigator){ window.addEventListener('load', ()=>{ navigator.serviceWorker.register('./sw.js') }) }
+  } catch(err){ const e=$('error'); e.style.display='block'; e.textContent='Init error: '+(err && err.message? err.message : err); console.error(err); }
+})();
+</script>
+</body>
+</html>
